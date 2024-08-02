@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    
+    <h1>TEST </h1>
+
+    <button>GET</button>
+
+    <script>
+
+        const btn = document.querySelector('button');
+        btn.addEventListener('click', sendcookie);
+
+        async function sendcookie() {
+            const res = await fetch('http://192.168.1.6:8000/getcookies', {
+                method: 'GET',
+                credentials: 'include'
+            });
+            const data = await res.json();
+            console.log(data)
+        }
+
+        async function getData() {   
+            try {
+                const res = await fetch('http://192.168.1.6:8000/auth/login', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: "lianeshogun6@gmail.com",
+                        password: "liane15"
+                    })
+                });
+                const data = await res.json();
+
+                if(!data) {
+                    console.log('error')
+                }
+
+                console.log(data);
+            } catch(err) {
+                console.log(err.message);
+            }
+        };
+
+        getData();
+
+    </script>
+</body>
+</html>
