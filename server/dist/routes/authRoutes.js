@@ -6,10 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
 const express_1 = require("express");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const dotenv_1 = __importDefault(require("dotenv"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const joi_1 = __importDefault(require("joi"));
+dotenv_1.default.config();
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 router.post('/signup', async (req, res) => {
     //VALIDATION
     const signupSchema = joi_1.default.object({
@@ -65,10 +69,23 @@ router.post('/signup', async (req, res) => {
             password: hashPassword
         }
     });
-    const token = jsonwebtoken_1.default.sign({ userId: value.id, userName: value.userName }, 'SECRET_KEY', {
+    const accessToken = jsonwebtoken_1.default.sign({ userId: user.id, userName: user.userName }, ACCESS_TOKEN_SECRET, {
+        expiresIn: '5s'
+    });
+    const refreshToken = jsonwebtoken_1.default.sign({ userId: user.id, userName: user.userName }, REFRESH_TOKEN_SECRET, {
         expiresIn: '5m'
     });
-    res.cookie('jwt', token, { httpOnly: true, secure: true, maxAge: 60 * 1000 });
+    res.set({
+        'Authorization': `Bearer ${accessToken}`,
+        'Refresh-Token': refreshToken
+    });
+    //STORE TOKEN
+    const token = await prisma.refreshToken.create({
+        data: {
+            token: refreshToken,
+            userId: user.id
+        }
+    });
     res.status(201).json({ message: 'Success', data: user });
 });
 router.post('/login', async (req, res) => {
@@ -84,10 +101,66 @@ router.post('/login', async (req, res) => {
     if (!passwordMatch) {
         return res.json({ error: 'Invalid email or password' });
     }
-    const token = jsonwebtoken_1.default.sign({ userId: user.id, userName: user.userName }, 'SECRET_KEY', {
+    const accessToken = jsonwebtoken_1.default.sign({ userId: user.id, userName: user.userName }, ACCESS_TOKEN_SECRET, {
+        expiresIn: '5s'
+    });
+    const refreshToken = jsonwebtoken_1.default.sign({ userId: user.id, userName: user.userName }, REFRESH_TOKEN_SECRET, {
         expiresIn: '5m'
     });
-    res.cookie('jwt', token, { httpOnly: true, secure: false, maxAge: 300000 });
+    res.set({
+        'Authorization': `Bearer ${accessToken}`,
+        'Refresh-Token': refreshToken
+    });
+    //STORE TOKEN
+    try {
+        const token = await prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: user.id
+            }
+        });
+    }
+    catch (err) {
+        console.log('Error');
+    }
     res.json(user);
+});
+router.post('/logout', async (req, res) => {
+    const refreshToken = req.headers['refresh-token'];
+    if (refreshToken === 'undefined' || !refreshToken) {
+        return res.json({ error: 'Refresh Token Error' });
+    }
+    try {
+        await prisma.refreshToken.delete({
+            where: {
+                token: refreshToken
+            }
+        });
+        res.json({ message: 'Logout Successfully' });
+    }
+    catch (err) {
+        return res.json({ error: 'Already logged out' });
+    }
+});
+router.post('/refresh-token', async (req, res) => {
+    const refreshToken = req.headers['refresh-token'];
+    if (refreshToken === 'undefined' || !refreshToken) {
+        return res.json({ error: 'No token provided' });
+    }
+    //CHECK DB
+    const token = await prisma.refreshToken.findUnique({
+        where: {
+            token: refreshToken
+        }
+    });
+    if (!token) {
+        return res.json({ error: 'Refresh Token not found' });
+    }
+    jsonwebtoken_1.default.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, value) => {
+        if (err) {
+            return res.json({ error: 'Refresh Token Error' });
+        }
+        res.json({ message: 'Token refreshed' });
+    });
 });
 exports.default = router;

@@ -1,11 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import Joi from 'joi';
 
+dotenv.config();
+
 const router = Router();
 const prisma = new PrismaClient();
+
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET!;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET!;
 
 router.post('/signup', async (req: Request, res: Response) => {
     
@@ -72,11 +78,27 @@ router.post('/signup', async (req: Request, res: Response) => {
         }
     });
 
-    const token = jwt.sign({ userId: value.id, userName: value.userName }, 'SECRET_KEY', {
+
+    const accessToken = jwt.sign({ userId: user.id, userName: user.userName }, ACCESS_TOKEN_SECRET, {
+        expiresIn: '5s'
+    });
+    const refreshToken = jwt.sign({ userId: user.id, userName: user.userName }, REFRESH_TOKEN_SECRET, {
         expiresIn: '5m'
     });
     
-    res.cookie('jwt', token, { httpOnly: true, secure: true, maxAge:  60 * 1000});
+    res.set({
+        'Authorization': `Bearer ${accessToken}`,
+        'Refresh-Token': refreshToken
+    });
+
+
+    //STORE TOKEN
+    const token = await prisma.refreshToken.create({
+        data: {
+            token: refreshToken,
+            userId: user.id
+        }
+    });
 
     res.status(201).json({message: 'Success', data: user});
 });
@@ -102,16 +124,82 @@ router.post('/login', async (req: Request, res: Response) => {
         return res.json({ error: 'Invalid email or password' });
     }
 
-    const token = jwt.sign({ userId: user.id, userName: user.userName }, 'SECRET_KEY', {
+    const accessToken = jwt.sign({ userId: user.id, userName: user.userName }, ACCESS_TOKEN_SECRET, {
+        expiresIn: '5s'
+    });
+    const refreshToken = jwt.sign({ userId: user.id, userName: user.userName }, REFRESH_TOKEN_SECRET, {
         expiresIn: '5m'
     });
     
-    res.cookie('jwt', token, { httpOnly: true, secure: false, maxAge:  300000});
+    res.set({
+        'Authorization': `Bearer ${accessToken}`,
+        'Refresh-Token': refreshToken
+    });
+
+    //STORE TOKEN
+    try {
+        const token = await prisma.refreshToken.create({
+            data: {
+                token: refreshToken,
+                userId: user.id
+            }
+        });
+    } catch(err) {
+        console.log('Error');
+    }
 
     res.json(user);
 });
 
 
+router.post('/logout', async (req: Request, res: Response) => {
+
+    const refreshToken = req.headers['refresh-token'] as string;
+
+    if(refreshToken === 'undefined' || !refreshToken) {
+        return res.json({ error: 'Refresh Token Error' });
+    }
+
+    try {
+        await prisma.refreshToken.delete({
+            where: {
+                token: refreshToken
+            }
+        });
+        res.json({ message: 'Logout Successfully'});
+    } catch(err) {
+        return res.json({ error: 'Already logged out' });
+    }
+});
+
+
+router.post('/refresh-token', async (req: Request, res: Response) => {
+
+    const refreshToken = req.headers['refresh-token'] as string;
+
+    if(refreshToken === 'undefined' || !refreshToken) {
+        return res.json({error: 'No token provided'});
+    }
+
+    //CHECK DB
+    const token = await prisma.refreshToken.findUnique({
+        where: {
+            token: refreshToken
+        }
+    });
+
+    if(!token) {
+        return res.json({ error: 'Refresh Token not found' });
+    }
+
+    jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, (err, value) => {
+        if(err) {
+            return res.json({error: 'Refresh Token Error'});
+        }
+        res.json({ message: 'Token refreshed' });
+    });
+
+});
 
 
 export default router;

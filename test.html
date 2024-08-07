@@ -9,48 +9,97 @@
     
     <h1>TEST </h1>
 
-    <button>GET</button>
+    <button id="btn1">SET</button>
+    <button id="btn4">GET</button>
+    <button id="btn2">LOGOUT</button>
+    <button id="btn3">REFRESH</button>
 
     <script>
 
-        const btn = document.querySelector('button');
-        btn.addEventListener('click', sendcookie);
+        let atoken;
+        let rtoken;
 
-        async function sendcookie() {
-            const res = await fetch('http://192.168.1.6:8000/getcookies', {
-                method: 'GET',
-                credentials: 'include'
+        const btn1 = document.querySelector('#btn1');
+        btn1.addEventListener('click', sendcookie);
+
+        const btn2 = document.querySelector('#btn2');
+        btn2.addEventListener('click', logout);
+
+        const btn3 = document.querySelector('#btn3');
+        btn3.addEventListener('click', refreshToken);
+
+        const btn4 = document.querySelector('#btn4');
+        btn4.addEventListener('click', protected);
+
+        async function refreshToken() {
+
+            const res = await fetch('http://localhost:8000/auth/refresh-token', {
+                method: 'POST',
+                headers: {
+                    'Authorization': atoken,
+                    'Refresh-Token': rtoken,
+                    'Content-Type': 'application/json'
+                }
             });
+            atoken = res.headers.get('Authorization');
             const data = await res.json();
             console.log(data)
-        }
+        }   
 
-        async function getData() {   
+        async function sendcookie() {
+            const res = await fetch('http://localhost:8000/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: "patriach2@gmail.com",
+                    password: "vernel15"
+                })
+            });
+            const data = await res.json();
+            atoken = res.headers.get('Authorization');
+            rtoken = res.headers.get('Refresh-Token');
+            console.log({ atoken, rtoken });
+            console.log(data);
+        }
+        
+
+        async function logout() {   
             try {
-                const res = await fetch('http://192.168.1.6:8000/auth/login', {
+                const res = await fetch('http://localhost:8000/auth/logout', {
                     method: 'POST',
-                    credentials: 'include',
                     headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        email: "lianeshogun6@gmail.com",
-                        password: "liane15"
-                    })
+                        'Authorization': atoken,
+                        'Refresh-Token': rtoken
+                    }
                 });
                 const data = await res.json();
 
                 if(!data) {
                     console.log('error')
                 }
-
+                atoken = '';
+                rtoken = '';
                 console.log(data);
             } catch(err) {
                 console.log(err.message);
             }
         };
 
-        getData();
+        async function protected() {
+
+            const res = await fetch('http://localhost:8000/pro', {
+                method: 'GET',
+                headers: {
+                    'Authorization': atoken,
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await res.json();
+            console.log(data);
+        }
+        
 
     </script>
 </body>
